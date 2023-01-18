@@ -1,5 +1,21 @@
 # @effect/io
 
+## 0.0.66
+
+### Patch Changes
+
+- [`a4a2c9a`](https://github.com/Effect-TS/io/commit/a4a2c9a077bca8c2ad99601b274e1526c6d2a6f4) Thanks [@patroza](https://github.com/patroza)! - Add toString to Exceptions
+
+- [#199](https://github.com/Effect-TS/io/pull/199) [`7d0a9dc`](https://github.com/Effect-TS/io/commit/7d0a9dcf20feb02028f7847bdf2f4d9210539a0d) Thanks [@patroza](https://github.com/patroza)! - Fix missing \_tag in built-in Exceptions
+
+- [#196](https://github.com/Effect-TS/io/pull/196) [`f1b8d74`](https://github.com/Effect-TS/io/commit/f1b8d74cfd31b0bfa9622b28f61ff2db46303a7f) Thanks [@mikearnaldi](https://github.com/mikearnaldi)! - Improve Deferred API
+
+- [#201](https://github.com/Effect-TS/io/pull/201) [`02f1e57`](https://github.com/Effect-TS/io/commit/02f1e575f3c37377b03890b4e28f499e042dac05) Thanks [@IMax153](https://github.com/IMax153)! - enhancements to Config and ConfigProvider
+
+- [#194](https://github.com/Effect-TS/io/pull/194) [`d4fdba5`](https://github.com/Effect-TS/io/commit/d4fdba556273d7a947528aefadd2579d22b3e8e2) Thanks [@mikearnaldi](https://github.com/mikearnaldi)! - Improve Ref, Ref.Syncronized and ScopedRef API
+
+- [#197](https://github.com/Effect-TS/io/pull/197) [`3af5aa3`](https://github.com/Effect-TS/io/commit/3af5aa35f34c12f877a982bb36bea82973260120) Thanks [@mikearnaldi](https://github.com/mikearnaldi)! - Prevent tacit usage of constructors with no arguments
+
 ## 0.0.65
 
 ### Patch Changes
