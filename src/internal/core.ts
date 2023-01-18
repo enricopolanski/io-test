@@ -1,5 +1,5 @@
 import type * as Cause from "@effect/io/Cause"
-import { getCallTrace, isTraceEnabled } from "@effect/io/Debug"
+import { getCallTrace, untraced, untracedWith } from "@effect/io/Debug"
 import type * as Deferred from "@effect/io/Deferred"
 import type * as Effect from "@effect/io/Effect"
 import type * as ExecutionStrategy from "@effect/io/ExecutionStrategy"
@@ -121,7 +121,7 @@ export const proto = {
     return Equal.hashRandom(this)
   },
   traced(this: Effect.Effect<never, never, never>, trace: string | undefined): Effect.Effect<never, never, never> {
-    if (!isTraceEnabled() || trace === this["trace"]) {
+    if (trace === this["trace"]) {
       return this
     }
     const fresh = Object.create(proto)
@@ -494,8 +494,12 @@ export const environmentWithEffect = <R, R0, E, A>(
  * @internal
  */
 export const exit = <R, E, A>(self: Effect.Effect<R, E, A>): Effect.Effect<R, never, Exit.Exit<E, A>> => {
-  const trace = getCallTrace()
-  return pipe(self, matchCause(failCause, succeed)).traced(trace) as Effect.Effect<R, never, Exit.Exit<E, A>>
+  return untracedWith((trace) =>
+    pipe(
+      self,
+      matchCause(failCause, succeed)
+    ).traced(trace) as Effect.Effect<R, never, Exit.Exit<E, A>>
+  )
 }
 
 /**
@@ -503,8 +507,7 @@ export const exit = <R, E, A>(self: Effect.Effect<R, E, A>): Effect.Effect<R, ne
  * @internal
  */
 export const fail = <E>(error: E): Effect.Effect<never, E, never> => {
-  const trace = getCallTrace()
-  return failCause(internalCause.fail(error)).traced(trace)
+  return untracedWith((trace) => failCause(internalCause.fail(error)).traced(trace))
 }
 
 /**
@@ -512,8 +515,7 @@ export const fail = <E>(error: E): Effect.Effect<never, E, never> => {
  * @internal
  */
 export const failSync = <E>(evaluate: LazyArg<E>): Effect.Effect<never, E, never> => {
-  const trace = getCallTrace()
-  return failCauseSync(() => internalCause.fail(evaluate())).traced(trace)
+  return untracedWith((trace, restore) => failCauseSync(() => internalCause.fail(restore(evaluate)())).traced(trace))
 }
 
 /**
@@ -521,12 +523,13 @@ export const failSync = <E>(evaluate: LazyArg<E>): Effect.Effect<never, E, never
  * @internal
  */
 export const failCause = <E>(cause: Cause.Cause<E>): Effect.Effect<never, E, never> => {
-  const trace = getCallTrace()
-  const effect = Object.create(proto)
-  effect._tag = OpCodes.OP_FAILURE
-  effect.cause = cause
-  effect.trace = trace
-  return effect
+  return untracedWith((trace) => {
+    const effect = Object.create(proto)
+    effect._tag = OpCodes.OP_FAILURE
+    effect.cause = cause
+    effect.trace = trace
+    return effect
+  })
 }
 
 /**
@@ -534,8 +537,12 @@ export const failCause = <E>(cause: Cause.Cause<E>): Effect.Effect<never, E, nev
  * @internal
  */
 export const failCauseSync = <E>(evaluate: LazyArg<Cause.Cause<E>>): Effect.Effect<never, E, never> => {
-  const trace = getCallTrace()
-  return pipe(sync(evaluate), flatMap(failCause)).traced(trace)
+  return untracedWith((trace, restore) =>
+    pipe(
+      sync(restore(evaluate)),
+      flatMap(failCause)
+    ).traced(trace)
+  )
 }
 
 /**
@@ -543,10 +550,9 @@ export const failCauseSync = <E>(evaluate: LazyArg<Cause.Cause<E>>): Effect.Effe
  * @internal
  */
 export const fiberId = (): Effect.Effect<never, never, FiberId.FiberId> => {
-  const trace = getCallTrace()
-  return withFiberRuntime<never, never, FiberId.FiberId>(
-    (state) => succeed(state.id())
-  ).traced(trace)
+  return untracedWith((trace) =>
+    withFiberRuntime<never, never, FiberId.FiberId>((state) => succeed(state.id())).traced(trace)
+  )
 }
 
 /**
@@ -556,10 +562,11 @@ export const fiberId = (): Effect.Effect<never, never, FiberId.FiberId> => {
 export const fiberIdWith = <R, E, A>(
   f: (descriptor: FiberId.Runtime) => Effect.Effect<R, E, A>
 ): Effect.Effect<R, E, A> => {
-  const trace = getCallTrace()
-  return withFiberRuntime<R, E, A>(
-    (state) => f(state.id())
-  ).traced(trace)
+  return untracedWith((trace, restore) =>
+    withFiberRuntime<R, E, A>(
+      (state) => restore(f)(state.id())
+    ).traced(trace)
+  )
 }
 
 /**
@@ -567,15 +574,16 @@ export const fiberIdWith = <R, E, A>(
  * @internal
  */
 export const flatMap = <A, R1, E1, B>(f: (a: A) => Effect.Effect<R1, E1, B>) => {
-  const trace = getCallTrace()
-  return <R, E>(self: Effect.Effect<R, E, A>): Effect.Effect<R | R1, E | E1, B> => {
-    const effect = Object.create(proto)
-    effect._tag = OpCodes.OP_ON_SUCCESS
-    effect.first = self
-    effect.successK = f
-    effect.trace = trace
-    return effect
-  }
+  return untracedWith((trace, restore) =>
+    <R, E>(self: Effect.Effect<R, E, A>): Effect.Effect<R | R1, E | E1, B> => {
+      const effect = Object.create(proto)
+      effect._tag = OpCodes.OP_ON_SUCCESS
+      effect.first = self
+      effect.successK = restore(f)
+      effect.trace = trace
+      return effect
+    }
+  )
 }
 
 /**
@@ -1097,12 +1105,13 @@ export const serviceWithEffect = <T>(tag: Context.Tag<T>) => {
  * @internal
  */
 export const succeed = <A>(value: A): Effect.Effect<never, never, A> => {
-  const trace = getCallTrace()
-  const effect = Object.create(proto)
-  effect._tag = OpCodes.OP_SUCCESS
-  effect.value = value
-  effect.trace = trace
-  return effect
+  return untracedWith((trace) => {
+    const effect = Object.create(proto)
+    effect._tag = OpCodes.OP_SUCCESS
+    effect.value = value
+    effect.trace = trace
+    return effect
+  })
 }
 
 /**
@@ -1112,8 +1121,12 @@ export const succeed = <A>(value: A): Effect.Effect<never, never, A> => {
 export const suspendSucceed = <R, E, A>(
   effect: LazyArg<Effect.Effect<R, E, A>>
 ): Effect.Effect<R, E, A> => {
-  const trace = getCallTrace()
-  return pipe(sync(effect), flatMap(identity)).traced(trace)
+  return untracedWith((trace, restore) =>
+    pipe(
+      sync(restore(effect)),
+      flatMap(identity)
+    ).traced(trace)
+  )
 }
 
 /**
@@ -1121,12 +1134,13 @@ export const suspendSucceed = <R, E, A>(
  * @internal
  */
 export const sync = <A>(evaluate: LazyArg<A>): Effect.Effect<never, never, A> => {
-  const trace = getCallTrace()
-  const effect = Object.create(proto)
-  effect._tag = OpCodes.OP_SYNC
-  effect.evaluate = evaluate
-  effect.trace = trace
-  return effect
+  return untracedWith((trace, restore) => {
+    const effect = Object.create(proto)
+    effect._tag = OpCodes.OP_SYNC
+    effect.evaluate = restore(evaluate)
+    effect.trace = trace
+    return effect
+  })
 }
 
 /**
@@ -1294,16 +1308,16 @@ export const whileLoop = <R, E, A>(
   check: LazyArg<boolean>,
   body: LazyArg<Effect.Effect<R, E, A>>,
   process: (a: A) => void
-): Effect.Effect<R, E, void> => {
-  const trace = getCallTrace()
-  const effect = Object.create(proto)
-  effect._tag = OpCodes.OP_WHILE
-  effect.check = check
-  effect.body = body
-  effect.process = process
-  effect.trace = trace
-  return effect
-}
+): Effect.Effect<R, E, void> =>
+  untracedWith((trace, restore) => {
+    const effect = Object.create(proto)
+    effect._tag = OpCodes.OP_WHILE
+    effect.check = restore(check)
+    effect.body = restore(body)
+    effect.process = restore(process)
+    effect.trace = trace
+    return effect
+  })
 
 /**
  * @macro traced
@@ -1314,38 +1328,37 @@ export const withFiberRuntime = <R, E, A>(
     fiber: FiberRuntime.FiberRuntime<E, A>,
     status: FiberStatus.Running
   ) => Effect.Effect<R, E, A>
-): Effect.Effect<R, E, A> => {
-  const trace = getCallTrace()
-  const effect = Object.create(proto)
-  effect._tag = OpCodes.OP_WITH_RUNTIME
-  effect.withRuntime = withRuntime
-  effect.trace = trace
-  return effect
-}
+): Effect.Effect<R, E, A> =>
+  untracedWith((trace, restore) => {
+    const effect = Object.create(proto)
+    effect._tag = OpCodes.OP_WITH_RUNTIME
+    effect.withRuntime = restore(withRuntime)
+    effect.trace = trace
+    return effect
+  })
 
 /**
  * @macro traced
  * @internal
  */
-export const withParallelism = (parallelism: number) => {
-  return <R, E, A>(self: Effect.Effect<R, E, A>): Effect.Effect<R, E, A> => {
-    const trace = getCallTrace()
-    return suspendSucceed(
-      () => fiberRefLocally(currentParallelism)(Option.some(parallelism))(self)
+export const withParallelism = (parallelism: number) =>
+  untracedWith((trace) =>
+    <R, E, A>(self: Effect.Effect<R, E, A>): Effect.Effect<R, E, A> =>
+      untraced(() =>
+        suspendSucceed(() => fiberRefLocally(currentParallelism)(Option.some(parallelism))(self)).traced(trace)
+      )
+  )
+
+/**
+ * @macro traced
+ * @internal
+ */
+export const withParallelismUnbounded = <R, E, A>(self: Effect.Effect<R, E, A>) =>
+  untracedWith((trace) =>
+    suspendSucceed(
+      () => fiberRefLocally(currentParallelism)(Option.none as Option.Option<number>)(self)
     ).traced(trace)
-  }
-}
-
-/**
- * @macro traced
- * @internal
- */
-export const withParallelismUnbounded = <R, E, A>(self: Effect.Effect<R, E, A>) => {
-  const trace = getCallTrace()
-  return suspendSucceed(
-    () => fiberRefLocally(currentParallelism)(Option.none as Option.Option<number>)(self)
-  ).traced(trace)
-}
+  )
 
 /**
  * @macro traced

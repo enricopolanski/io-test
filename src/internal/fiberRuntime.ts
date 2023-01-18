@@ -1,7 +1,7 @@
 import type * as Cause from "@effect/io/Cause"
 import type * as Clock from "@effect/io/Clock"
 import type { ConfigProvider } from "@effect/io/Config/Provider"
-import { getCallTrace, isTraceEnabled, runtimeDebug } from "@effect/io/Debug"
+import { getCallTrace, runtimeDebug } from "@effect/io/Debug"
 import * as Deferred from "@effect/io/Deferred"
 import type * as Effect from "@effect/io/Effect"
 import * as ExecutionStrategy from "@effect/io/ExecutionStrategy"
@@ -798,6 +798,8 @@ export class FiberRuntime<E, A> implements Fiber.RuntimeFiber<E, A> {
    * **NOTE**: This method must be invoked by the fiber itself.
    */
   evaluateEffect(effect0: Effect.Effect<any, any, any>) {
+    const pre = runtimeDebug.tracingEnabled
+    runtimeDebug.tracingEnabled = false
     this.getSupervisor().onResume(this)
     try {
       let effect: Effect.Effect<any, any, any> | null =
@@ -843,6 +845,7 @@ export class FiberRuntime<E, A> implements Fiber.RuntimeFiber<E, A> {
         }
       }
     } finally {
+      runtimeDebug.tracingEnabled = pre
       this.getSupervisor().onSuspend(this)
     }
   }
@@ -969,7 +972,7 @@ export class FiberRuntime<E, A> implements Fiber.RuntimeFiber<E, A> {
   }
 
   onExecute(_op: core.Primitive) {
-    if (_op.trace && isTraceEnabled()) {
+    if (_op.trace) {
       this.logTrace(_op.trace)
     }
   }

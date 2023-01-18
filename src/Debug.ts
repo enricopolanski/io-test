@@ -1,6 +1,7 @@
 /**
  * @since 1.0.0
  */
+
 import { identity } from "@fp-ts/data/Function"
 
 /**
@@ -13,18 +14,6 @@ export interface Debug {
    */
   minumumLogLevel: "All" | "Fatal" | "Error" | "Warning" | "Info" | "Debug" | "Trace" | "None"
   /**
-   * When specified it will be used to collect call traces at runtime.
-   *
-   * NOTE: Collecting traces at runtime is expensive and unreliable due
-   * to the stack trace format being non standardized across platforms.
-   * This flag is meant to be used only when debugging during development.
-   */
-  getCallTrace: ((at: number) => string | undefined) | undefined
-  /**
-   * A function that is used to filter which traces to show and collect.
-   */
-  traceFilter: (trace: string) => boolean
-  /**
    * Sets a limit on how many stack traces should be rendered.
    */
   traceStackLimit: number
@@ -36,26 +25,20 @@ export interface Debug {
    * Enables debug logging of execution traces.
    */
   traceExecutionLogEnabled: boolean
+  /**
+   * Enables debug logging of execution traces.
+   */
+  tracingEnabled: boolean
+  /**
+   * Enables debug logging of execution traces.
+   */
+  tracingRuntimeEnabled: boolean
 }
 
-/**
- * @category debug
- * @since 1.0.0
- */
-export const runtimeDebug: Debug = {
-  minumumLogLevel: "Info",
-  traceExecutionLimit: 5,
-  traceStackLimit: 5,
-  getCallTrace: undefined,
-  traceFilter: () => true,
-  traceExecutionLogEnabled: false
-}
-
-/**
- * @category debug
- * @since 1.0.0
- */
-export const getCallTraceFromNewError = (at: number): string | undefined => {
+const getCallTraceFromNewError = (at: number): string | undefined => {
+  if (!runtimeDebug.tracingRuntimeEnabled) {
+    return
+  }
   const limit = Error.stackTraceLimit
   Error.stackTraceLimit = at
   const stack = new Error().stack
@@ -73,45 +56,123 @@ export const getCallTraceFromNewError = (at: number): string | undefined => {
   }
 }
 
-/** @internal */
-const stack: Array<string> = []
-/** @internal */
+const levels = ["All", "Fatal", "Error", "Warning", "Info", "Debug", "Trace", "None"]
+
+/**
+ * @category debug
+ * @since 1.0.0
+ */
+export const runtimeDebug: Debug = {
+  minumumLogLevel:
+    process && process.env && process.env["EFFECT_LOG_LEVEL"] && levels.includes(process.env["EFFECT_LOG_LEVEL"]) ?
+      process.env["EFFECT_LOG_LEVEL"] as Debug["minumumLogLevel"] :
+      "Info",
+  traceExecutionLimit: process && process.env && process.env["EFFECT_TRACING_EXECUTION_LIMIT"] ?
+    Number.parseInt(process.env["EFFECT_TRACING_EXECUTION_LIMIT"]) :
+    5,
+  traceStackLimit: process && process.env && process.env["EFFECT_TRACING_STACK_LIMIT"] ?
+    Number.parseInt(process.env["EFFECT_TRACING_STACK_LIMIT"]) :
+    5,
+  traceExecutionLogEnabled: process && process.env && process.env["EFFECT_TRACING_EXECUTION_LOG"] &&
+      process.env["EFFECT_TRACING_EXECUTION_LOG"] === "true" ?
+    true :
+    false,
+  tracingEnabled: process && process.env && process.env["EFFECT_TRACING_ENABLED"] &&
+      process.env["EFFECT_TRACING_ENABLED"] === "false" ?
+    false :
+    true,
+  tracingRuntimeEnabled: process && process.env && process.env["EFFECT_TRACING_RUNTIME_ENABLED"] &&
+      process.env["EFFECT_TRACING_RUNTIME_ENABLED"] === "false" ?
+    false :
+    true
+}
+
+const stack: Array<string | undefined> = []
 const cleanup = <A>(x: A) => {
   stack.pop()
   return x
 }
 
-/** @internal */
-const orUndefined = (trace: string | undefined): string | undefined => {
-  if (trace && runtimeDebug.traceFilter(trace)) {
+/**
+ * @since 1.0.0
+ */
+export const withCallTrace = (trace: string): <A>(value: A) => A => {
+  stack.push(trace)
+  return cleanup
+}
+
+const getFromStack = () => {
+  if (stack.length > 0) {
+    const trace = stack[stack.length - 1]
+    stack[stack.length - 1] = undefined
     return trace
   }
-  return void 0
 }
 
 /**
  * @since 1.0.0
  */
-export const isTraceEnabled: (_: void) => boolean = () =>
-  (runtimeDebug.traceStackLimit > 0) || (runtimeDebug.traceExecutionLimit > 0)
+export const untracedWith = <A>(
+  body: (
+    trace: string | undefined,
+    restore: <F extends (...args: Array<any>) => any>(f: F) => F
+  ) => A
+) => {
+  if (!runtimeDebug.tracingEnabled) {
+    return body(void 0, identity)
+  }
+  const trace = getFromStack() ?? getCallTraceFromNewError(4)
+  runtimeDebug.tracingEnabled = false
+  try {
+    return body(trace, (f): any =>
+      (...args: Array<any>) => {
+        if (runtimeDebug.tracingEnabled) {
+          return f(...args)
+        }
+        runtimeDebug.tracingEnabled = true
+        try {
+          return f(...args)
+        } finally {
+          runtimeDebug.tracingEnabled = false
+        }
+      })
+  } finally {
+    runtimeDebug.tracingEnabled = true
+  }
+}
 
 /**
  * @since 1.0.0
  */
-export const withCallTrace = (trace: string): <A>(value: A) => A => {
-  if (!runtimeDebug.getCallTrace) {
-    stack.push(trace)
-    return cleanup
+export const untraced = <A>(
+  body: (restore: <F extends (...args: Array<any>) => any>(f: F) => F) => A
+) => {
+  if (!runtimeDebug.tracingEnabled) {
+    return body(identity)
   }
-  return identity
+  runtimeDebug.tracingEnabled = false
+  try {
+    return body((f): any =>
+      (...args: Array<any>) => {
+        if (runtimeDebug.tracingEnabled) {
+          return f(...args)
+        }
+        runtimeDebug.tracingEnabled = true
+        try {
+          return f(...args)
+        } finally {
+          runtimeDebug.tracingEnabled = false
+        }
+      }
+    )
+  } finally {
+    runtimeDebug.tracingEnabled = true
+  }
 }
 
 /**
  * @since 1.0.0
  */
 export const getCallTrace = (): string | undefined => {
-  if (runtimeDebug.getCallTrace) {
-    return orUndefined(runtimeDebug.getCallTrace(4))
-  }
-  return orUndefined(stack[stack.length - 1])
+  return undefined
 }
