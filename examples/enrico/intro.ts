@@ -1,7 +1,7 @@
 import * as Effect from "@effect/io/Effect"
-import * as Fiber from "@effect/io/Fiber"
 // import * as Layer from "@effect/io/Layer"
 import * as Context from "@fp-ts/data/Context"
+import * as Duration from "@fp-ts/data/Duration"
 import { pipe } from "@fp-ts/data/Function"
 
 export const FooId: unique symbol = Symbol()
@@ -20,23 +20,10 @@ export interface Bar {
 
 export const Bar = Context.Tag<Bar>()
 
-const c = Effect.serviceWithEffect(Foo, ({ foo }) => Effect.log(`foo is ${foo}`))
-const d = Effect.serviceWithEffect(Bar, ({ bar }) => Effect.log(`bar is ${bar}`))
+const c = Effect.delay(Duration.millis(100))(Effect.serviceWithEffect(Foo, ({ foo }) => Effect.log(`foo is ${foo}`)))
+const d = Effect.delay(Duration.millis(100))(Effect.serviceWithEffect(Bar, ({ bar }) => Effect.log(`bar is ${bar}`)))
 
-const cd = pipe(
-  Effect.fork(c),
-  Effect.flatMap((a0) =>
-    pipe(
-      Effect.fork(d),
-      Effect.flatMap((a1) =>
-        pipe(
-          Fiber.join(a0),
-          Effect.flatMap((resA0) => pipe(Fiber.join(a1), Effect.map((resA1) => [resA0, resA1] as const)))
-        )
-      )
-    )
-  )
-)
+const cd = pipe(Effect.tuplePar(c, d, c, d, c, d, c, d, c, d, c, d, c, d), Effect.withParallelism(4))
 
 const makeBar = Effect.serviceWith(Foo, ({ foo }): Bar => ({ _service: BarId, bar: `bar(${foo})` }))
 
