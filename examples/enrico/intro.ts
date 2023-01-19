@@ -29,6 +29,15 @@ Effect.promise(() => Promise.resolve(0))
 Effect.tryCatchPromise(() => Promise.resolve(0), () => new Error("bla"))
 Effect.tryPromiseInterrupt((signal) => fetch("bla", { signal }))
 
+Effect.asyncInterrupt<never, string, void>((resume) => {
+  const timer = setTimeout(() => {
+    resume(Effect.unit())
+  }, 1000)
+  return Effect.sync(() => {
+    clearTimeout(timer)
+  })
+})
+
 const cd = pipe(
   Effect.tuplePar(c, d, c),
   Effect.withParallelism(4)
