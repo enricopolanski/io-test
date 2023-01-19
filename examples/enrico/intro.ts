@@ -1,4 +1,6 @@
+import * as Cause from "@effect/io/Cause"
 import * as Effect from "@effect/io/Effect"
+import * as Exit from "@effect/io/Exit"
 // import * as Layer from "@effect/io/Layer"
 import * as Context from "@fp-ts/data/Context"
 import * as Duration from "@fp-ts/data/Duration"
@@ -23,7 +25,28 @@ export const Bar = Context.Tag<Bar>()
 const c = Effect.delay(Duration.millis(100))(Effect.serviceWithEffect(Foo, ({ foo }) => Effect.log(`foo is ${foo}`)))
 const d = Effect.delay(Duration.millis(100))(Effect.serviceWithEffect(Bar, ({ bar }) => Effect.log(`bar is ${bar}`)))
 
-const cd = pipe(Effect.tuplePar(c, d, c, d, c, d, c, d, c, d, c, d, c, d), Effect.withParallelism(4))
+const cd = pipe(
+  Effect.tuplePar(
+    c,
+    d,
+    c,
+    d,
+    c,
+    d,
+    c,
+    d,
+    c,
+    d,
+    c,
+    d,
+    c,
+    d,
+    Effect.sync(() => {
+      throw new Error("bah")
+    })
+  ),
+  Effect.withParallelism(4)
+)
 
 const makeBar = Effect.serviceWith(Foo, ({ foo }): Bar => ({ _service: BarId, bar: `bar(${foo})` }))
 
@@ -42,5 +65,7 @@ const main = pipe(
 const fiber = Effect.unsafeFork(main)
 
 fiber.unsafeAddObserver((exit) => {
-  console.log(exit)
+  if (Exit.isFailure(exit)) {
+    console.log(Cause.pretty()(exit.cause))
+  }
 })
