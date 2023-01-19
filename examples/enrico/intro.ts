@@ -1,7 +1,7 @@
 import * as Cause from "@effect/io/Cause"
 import * as Effect from "@effect/io/Effect"
 import * as Exit from "@effect/io/Exit"
-// import * as Layer from "@effect/io/Layer"
+import * as Layer from "@effect/io/Layer"
 import * as Context from "@fp-ts/data/Context"
 import * as Duration from "@fp-ts/data/Duration"
 import { pipe } from "@fp-ts/data/Function"
@@ -16,8 +16,8 @@ export const Foo = Context.Tag<Foo>()
 
 export const BarId: unique symbol = Symbol()
 export interface Bar {
-  _service: typeof BarId
-  bar: string
+  readonly _service: typeof BarId
+  readonly bar: string
 }
 
 export const Bar = Context.Tag<Bar>()
@@ -26,40 +26,34 @@ const c = Effect.delay(Duration.millis(100))(Effect.serviceWithEffect(Foo, ({ fo
 const d = Effect.delay(Duration.millis(100))(Effect.serviceWithEffect(Bar, ({ bar }) => Effect.log(`bar is ${bar}`)))
 
 const cd = pipe(
-  Effect.tuplePar(
-    c,
-    d,
-    c,
-    d,
-    c,
-    d,
-    c,
-    d,
-    c,
-    d,
-    c,
-    d,
-    c,
-    d,
-    Effect.sync(() => {
-      throw new Error("bah")
-    })
-  ),
+  Effect.tuplePar(c, d, c),
   Effect.withParallelism(4)
 )
 
-const makeBar = Effect.serviceWith(Foo, ({ foo }): Bar => ({ _service: BarId, bar: `bar(${foo})` }))
+const FooLive = Layer.succeed(
+  Foo,
+  { _service: FooId, foo: "ok" }
+)
 
-const mioEnv = <R, E, A>(effect: Effect.Effect<R, E, A>) =>
-  pipe(
-    effect,
-    Effect.provideServiceEffect(Bar, makeBar),
-    Effect.provideService(Foo, { _service: FooId, foo: "ok" })
-  )
+const BarLive = Layer.scoped(
+  Bar,
+  Effect.gen(function*($) {
+    const foo = yield* $(Effect.service(Foo))
+    return {
+      _service: BarId,
+      bar: `bar: ${foo}`
+    } as const
+  })
+)
+
+const AppLive = pipe(
+  FooLive,
+  Layer.provideToAndMerge(BarLive)
+)
 
 const main = pipe(
   cd,
-  mioEnv
+  Effect.provideSomeLayer(AppLive)
 )
 
 const fiber = Effect.unsafeFork(main)
