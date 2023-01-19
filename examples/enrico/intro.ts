@@ -25,6 +25,10 @@ export const Bar = Context.Tag<Bar>()
 const c = Effect.delay(Duration.millis(100))(Effect.serviceWithEffect(Foo, ({ foo }) => Effect.log(`foo is ${foo}`)))
 const d = Effect.delay(Duration.millis(100))(Effect.serviceWithEffect(Bar, ({ bar }) => Effect.log(`bar is ${bar}`)))
 
+Effect.promise(() => Promise.resolve(0))
+Effect.tryCatchPromise(() => Promise.resolve(0), () => new Error("bla"))
+Effect.tryPromiseInterrupt((signal) => fetch("bla", { signal }))
+
 const cd = pipe(
   Effect.tuplePar(c, d, c),
   Effect.withParallelism(4)
@@ -33,6 +37,11 @@ const cd = pipe(
 const FooLive = Layer.succeed(
   Foo,
   { _service: FooId, foo: "ok" }
+)
+
+const res = pipe(
+  [0, 1, 2],
+  Effect.reduce("", (s, n) => Effect.succeed(`${s}(${n})`))
 )
 
 const BarLive = Layer.scoped(
